@@ -3,6 +3,8 @@ import { CommonModule } from '@angular/common';
 import { FormBuilder, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
 import { PaymentService } from '../../core/services/payment.service';
+import { OrderService } from '../../core/services/order.service';
+import { CartService } from '../../core/services/cart.service';
 import { ButtonComponent } from '../../shared/components/button/button.component';
 import { CardComponent } from '../../shared/components/card/card.component';
 import { InputComponent } from '../../shared/components/input/input.component';
@@ -60,6 +62,8 @@ export class PaymentComponent implements OnInit {
   private router = inject(Router);
   private fb = inject(FormBuilder);
   private paymentService = inject(PaymentService);
+  private orderService = inject(OrderService);
+  private cart = inject(CartService);
   private toast = inject(ToastService);
 
   orderId = signal<string>('');
@@ -95,19 +99,29 @@ export class PaymentComponent implements OnInit {
       next: (authRes: { paymentId: string, status: string }) => {
         this.paymentService.capture(this.orderId(), authRes.paymentId).subscribe({
           next: () => {
-            this.isProcessing.set(false);
-            this.paymentStatus.set('success');
-            this.toast.show({ title: 'Success', description: 'Payment completed successfully', variant: 'default' });
+            // Confirm the order on success
+            this.orderService.confirmOrder(this.orderId()).subscribe(() => {
+              this.isProcessing.set(false);
+              this.paymentStatus.set('success');
+              this.cart.clear(); // Clear cart only on SUCCESS
+              this.toast.show({ title: 'Success', description: 'Order confirmed and payment completed', variant: 'default' });
+            });
           },
           error: () => {
-            this.isProcessing.set(false);
-            this.paymentStatus.set('failed');
+            // Mark order as failed on capture failure
+            this.orderService.failOrder(this.orderId(), 'Payment capture failed').subscribe(() => {
+              this.isProcessing.set(false);
+              this.paymentStatus.set('failed');
+            });
           }
         });
       },
       error: () => {
-        this.isProcessing.set(false);
-        this.paymentStatus.set('failed');
+        // Mark order as failed on authorisation failure
+        this.orderService.failOrder(this.orderId(), 'Payment authorisation failed').subscribe(() => {
+          this.isProcessing.set(false);
+          this.paymentStatus.set('failed');
+        });
       }
     });
   }

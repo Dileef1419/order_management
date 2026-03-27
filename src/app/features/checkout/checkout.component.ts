@@ -168,8 +168,7 @@ export class CheckoutComponent {
 
     this.orderService.createOrder(payload, idempotencyKey).subscribe({
       next: (res: OrderResponse) => {
-        this.cart.clear();
-        this.toast.show({ title: 'Order Created', description: `Redirecting to payment...` });
+        this.toast.show({ title: 'Order Drafted', description: `Proceeding to payment...` });
         this.router.navigate(['/pay', res.orderId]);
       },
       error: () => {

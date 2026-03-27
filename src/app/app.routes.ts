@@ -3,7 +3,12 @@ import { authGuard } from './core/guards/auth.guard';
 import { roleGuard } from './core/guards/role.guard';
 
 export const routes: Routes = [
-  { path: '', redirectTo: 'login', pathMatch: 'full' },
+  {
+    path: 'profile',
+    loadComponent: () => import('./features/profile/profile.component').then(c => c.ProfileComponent),
+    canActivate: [authGuard]
+  },
+  { path: '', redirectTo: '/catalog', pathMatch: 'full' },
   { 
     path: 'login', 
     loadComponent: () => import('./features/auth/login/login.component').then(c => c.LoginComponent)

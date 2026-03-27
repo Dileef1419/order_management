@@ -80,34 +80,18 @@ export class LoginComponent {
     this.isLoading = true;
     this.errorMessage = '';
     
-    const { email } = this.loginForm.value;
+    const { email, password } = this.loginForm.value;
     
-    setTimeout(() => {
-      const { email, password } = this.loginForm.value;
-      const isAdminEmail = email === environment.adminEmail;
-
-      if (isAdminEmail) {
-        if (password !== environment.adminPassword) {
-          this.isLoading = false;
-          this.errorMessage = 'Invalid admin credentials.';
-          return;
-        }
-      } else if (!this.authService.isUserRegistered(email as string)) {
+    this.authService.login({ email: email as string, password: password as string }).subscribe({
+      next: () => {
         this.isLoading = false;
-        this.errorMessage = 'Account not found. Please register your account first.';
-        return;
+        const user = this.authService.currentUserValue;
+        this.router.navigate([user?.role === 'Admin' ? '/admin' : '/catalog']);
+      },
+      error: (err) => {
+        this.isLoading = false;
+        this.errorMessage = err.error?.title || err.error?.detail || 'Login failed. Please check your credentials.';
       }
-
-      this.isLoading = false;
-      const mockUser = {
-        id: isAdminEmail ? 'admin-1' : 'user-1',
-        email: email as string,
-        role: isAdminEmail ? 'Admin' as const : 'Customer' as const
-      };
-      const mockToken = 'mock-jwt-token-12345';
-      
-      this.authService.login(mockToken, mockUser);
-      this.router.navigate([isAdminEmail ? '/admin' : '/catalog']);
-    }, 1000);
+    });
   }
 }

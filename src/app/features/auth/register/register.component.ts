@@ -82,10 +82,17 @@ export class RegisterComponent {
 
     this.isLoading = true;
     
-    setTimeout(() => {
-      this.isLoading = false;
-      this.authService.registerUser(this.registerForm.value.email as string);
-      this.router.navigate(['/login']);
-    }, 1000);
+    this.authService.registerUser(this.registerForm.value).subscribe({
+      next: () => {
+        this.isLoading = false;
+        this.router.navigate(['/login']);
+      },
+      error: (err) => {
+        this.isLoading = false;
+        console.error('Registration error:', err);
+        // Show basic alert or just log, since no error message UI is present yet
+        alert(err.error?.title || 'Registration failed');
+      }
+    });
   }
 }

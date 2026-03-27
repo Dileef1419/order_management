@@ -1,7 +1,7 @@
 import { Component, inject, signal, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { RouterLink } from '@angular/router';
-import { OrderService, Order } from '../../core/services/order.service';
+import { PaymentService } from '../../core/services/payment.service';
 import { CardComponent } from '../../shared/components/card/card.component';
 import { TableComponent } from '../../shared/components/table/table.component';
 import { BadgeComponent } from '../../shared/components/badge/badge.component';
@@ -23,7 +23,7 @@ import { ButtonComponent } from '../../shared/components/button/button.component
       </div>
 
       <div class="grid grid-cols-1 gap-4">
-        @for(payment of payments(); track payment.id) {
+        @for(payment of payments(); track (payment.id || $index)) {
           <div 
             class="group flex flex-col md:flex-row items-start md:items-center justify-between p-6 rounded-xl border bg-card hover:border-primary/50 transition-all duration-300 shadow-sm"
           >
@@ -34,7 +34,7 @@ import { ButtonComponent } from '../../shared/components/button/button.component
               <div class="space-y-1">
                 <div class="flex items-center gap-2">
                   <span class="font-mono text-sm text-muted-foreground">{{ payment.id }}</span>
-                  <app-badge [variant]="payment.status === 'Captured' ? 'default' : (payment.status === 'Refunded' ? 'secondary' : 'destructive')">
+                  <app-badge [variant]="payment.status === 'Captured' ? 'success' : (payment.status === 'Refunded' ? 'secondary' : (payment.status === 'Failed' ? 'danger' : 'outline'))">
                     {{ payment.status }}
                   </app-badge>
                 </div>
@@ -70,7 +70,7 @@ import { ButtonComponent } from '../../shared/components/button/button.component
   `
 })
 export class PaymentHistoryComponent implements OnInit {
-  private orderService = inject(OrderService);
+  private paymentService = inject(PaymentService);
   
   payments = signal<any[]>([]);
   
@@ -83,12 +83,15 @@ export class PaymentHistoryComponent implements OnInit {
   ];
 
   ngOnInit() {
-    const allPayments = this.orderService.orders()
-      .filter(o => !!o.payment)
-      .map(o => ({
-        ...o.payment,
-        orderId: o.id
+    this.paymentService.getPaymentsByCustomer().subscribe(backendPayments => {
+      const mappedPayments = (backendPayments || []).map(p => ({
+        id: p.paymentId || p.PaymentId || p.id,
+        orderId: p.orderId || p.OrderId,
+        date: p.createdAt || p.CreatedAt || p.date,
+        amount: p.amount || p.Amount,
+        status: p.status || p.Status
       }));
-    this.payments.set(allPayments);
+      this.payments.set(mappedPayments);
+    });
   }
 }

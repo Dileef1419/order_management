@@ -109,10 +109,14 @@ export class OrderDetailComponent implements OnInit {
   ngOnInit() {
     const id = this.route.snapshot.paramMap.get('orderId') || '';
     this.orderId.set(id);
-    const o = this.orderService.getOrder(id);
-    if (o) {
-      this.order.set(o);
-      this.date = o.date;
-    }
+    this.orderService.getOrder(id).subscribe({
+      next: (o: any) => {
+        // Handle ApiGateway full response format if it has .order wrapper
+        const data = o.order || o;
+        this.order.set(data as Order);
+        this.date = data.date || data.placedAt || new Date().toISOString();
+      },
+      error: () => console.error('Failed to load order')
+    });
   }
 }

@@ -17,7 +17,7 @@ import { TableComponent } from '../../shared/components/table/table.component';
       <h1 class="text-3xl font-bold tracking-tight mb-8">My Orders</h1>
       
       <div class="grid grid-cols-1 gap-6">
-        @for(order of orders(); track order.id) {
+        @for(order of orders(); track (order.id || $index)) {
           <div 
             [routerLink]="['/orders', order.id]"
             class="group relative flex flex-col md:flex-row items-start md:items-center justify-between p-6 rounded-xl border bg-card hover:border-primary/50 transition-all duration-300 cursor-pointer shadow-sm hover:shadow-md"
@@ -81,21 +81,26 @@ export class OrderListComponent implements OnInit {
   ];
 
   ngOnInit() {
-    this.orders.set(this.orderService.orders().map(o => ({
-      id: o.id,
-      date: o.date,
-      status: o.status,
-      items: o.items.reduce((acc, item) => acc + item.quantity, 0),
-      total: o.totalAmount
-    })));
+    this.orderService.refreshOrders().subscribe(mappedOrders => {
+      this.orders.set(mappedOrders.map(o => ({
+        id: o.id,
+        date: o.date,
+        status: o.status,
+        items: (o as any).itemsCount || 0,
+        total: o.totalAmount
+      })));
+    });
   }
 
   getStatusVariant(status: string) {
     switch (status) {
-      case 'Delivered': return 'default';
-      case 'Processing': return 'secondary';
+      case 'Delivered': 
+      case 'Confirmed': return 'default';
+      case 'Processing': 
+      case 'Placed': return 'secondary';
       case 'Shipped': return 'outline';
-      case 'Cancelled': return 'destructive';
+      case 'Cancelled': 
+      case 'Failed': return 'destructive';
       default: return 'outline';
     }
   }

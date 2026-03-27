@@ -1,7 +1,9 @@
 import { Injectable, inject, signal } from '@angular/core';
 import { ApiService } from './api.service';
-import { Observable, of, delay } from 'rxjs';
+import { Observable, of, delay, tap, map } from 'rxjs';
 import { CartItem } from './cart.service';
+import { AuthService } from './auth.service';
+import { HttpHeaders } from '@angular/common/http';
 
 export interface OrderPayload {
   contact: { email: string; phone: string };
@@ -33,45 +35,86 @@ export interface Order {
 export class OrderService {
   private api = inject(ApiService);
 
-  private getInitialOrders(): Order[] {
-    const saved = localStorage.getItem('mock_orders');
-    return saved ? JSON.parse(saved) : [];
-  }
+  orders = signal<Order[]>([]);
 
-  orders = signal<Order[]>(this.getInitialOrders());
+  private auth = inject(AuthService);
 
-  private save() {
-    localStorage.setItem('mock_orders', JSON.stringify(this.orders()));
+  refreshOrders(): Observable<Order[]> {
+    const customerId = this.auth.currentUserValue?.id;
+    if (!customerId) return of([]);
+
+    return this.api.get<any[]>(`/api/v1/orders/by-customer/${customerId}`).pipe(
+      tap((backendOrders: any[]) => {
+        const mappedOrders = (backendOrders || [])
+          .filter(o => o.orderId || o.OrderId || o.Id || o.id) // Only keep orders with an ID
+          .map(o => ({
+            id: o.orderId || o.OrderId || o.Id || o.id,
+            date: o.placedAt || o.PlacedAt || o.date,
+            totalAmount: o.totalAmount || o.TotalAmount,
+            status: o.status || o.Status,
+            itemsCount: o.itemCount || o.ItemCount
+          } as any));
+        this.orders.set(mappedOrders);
+      })
+    );
   }
 
   createOrder(payload: OrderPayload, idempotencyKey: string): Observable<OrderResponse> {
-    const newOrder: Order = {
-      id: `ORD-${Math.floor(Math.random() * 1000000)}`,
-      date: new Date().toISOString(),
-      ...payload,
-      status: 'Pending Payment',
-      payment: null
+    const headers = new HttpHeaders().set('Idempotency-Key', idempotencyKey);
+    const placeOrderRequest = {
+      customerId: this.auth.currentUserValue?.id || '00000000-0000-0000-0000-000000000000',
+      customerName: payload.shipping.fullName || this.auth.currentUserValue?.email || 'Guest',
+      lines: payload.items.map(i => ({
+        sku: i.product.id,
+        quantity: i.quantity,
+        unitPrice: i.product.price
+      }))
     };
-    this.orders.update((v: Order[]) => [newOrder, ...v]);
-    this.save();
-    return of({
-      orderId: newOrder.id,
-      status: 'CREATED',
-      clientSecret: 'pi_mock_secret_123'
-    }).pipe(delay(800));
+    
+    return this.api.post<OrderResponse>('/api/v1/orders', placeOrderRequest, headers);
   }
 
-  getOrder(id: string): Order | undefined {
-    return this.orders().find(o => o.id === id);
+  confirmOrder(orderId: string): Observable<OrderResponse> {
+    return this.api.put<OrderResponse>(`/api/v1/orders/${orderId}/confirm`, {});
   }
 
-  updateOrderPayment(id: string, payment: any) {
-    this.orders.update((v: Order[]) => v.map((o: Order) => o.id === id ? { ...o, status: 'Processing', payment } : o));
-    this.save();
+  failOrder(orderId: string, reason: string): Observable<OrderResponse> {
+    return this.api.put<OrderResponse>(`/api/v1/orders/${orderId}/fail`, { reason });
   }
 
-  updateOrderStatus(id: string, status: string) {
-    this.orders.update((v: Order[]) => v.map((o: Order) => o.id === id ? { ...o, status } : o));
-    this.save();
+  getOrder(id: string): Observable<any> {
+    return this.api.get<any>(`/api/v1/orders/${id}`);
+  }
+
+  updateOrderPayment(id: string, payment: any): Observable<any> {
+    // In a real app, this might be a PATCH to /api/v1/orders/{id}/payment
+    return this.api.put<any>(`/api/v1/orders/${id}/payment`, { payment });
+  }
+
+  updateOrderStatus(id: string, status: string): Observable<any> {
+    if (status === 'Cancelled') {
+      return this.api.put<any>(`/api/v1/orders/${id}/cancel`, { reason: 'Admin override' });
+    }
+    // For other statuses (Shipped, Delivered), we'll assume a PATCH exists or add it
+    return this.api.patch<any>(`/api/v1/orders/${id}/status`, { status });
+  }
+
+  getAllOrders(): Observable<any[]> {
+    return this.api.get<any[]>('/api/v1/orders').pipe(
+      map((backendOrders: any[]) => (backendOrders || [])
+        .map(o => ({
+          id: o.orderId || o.OrderId || o.Id || o.id,
+          customerName: o.customerName || o.CustomerName,
+          date: o.placedAt || o.PlacedAt || o.date || o.createdAt || o.CreatedAt,
+          totalAmount: o.totalAmount || o.TotalAmount || o.total || o.Total,
+          status: o.status || o.Status,
+          itemsCount: o.itemCount || o.ItemCount
+        } as any))
+      )
+    );
+  }
+
+  getDashboard(): Observable<any> {
+    return this.api.get<any>('/api/v1/orders/dashboard');
   }
 }

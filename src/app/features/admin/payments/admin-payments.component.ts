@@ -6,6 +6,7 @@ import { BadgeComponent } from '../../../shared/components/badge/badge.component
 import { ButtonComponent } from '../../../shared/components/button/button.component';
 import { ToastService } from '../../../shared/components/toast/toast.service';
 import { OrderService } from '../../../core/services/order.service';
+import { PaymentService } from '../../../core/services/payment.service';
 
 @Component({
   selector: 'app-admin-payments',
@@ -48,6 +49,7 @@ import { OrderService } from '../../../core/services/order.service';
 export class AdminPaymentsComponent {
   private toast = inject(ToastService);
   private orderService = inject(OrderService);
+  private paymentService = inject(PaymentService);
 
   payments = signal<any[]>([]);
 
@@ -56,10 +58,18 @@ export class AdminPaymentsComponent {
   }
 
   loadPayments() {
-    const allPayments = this.orderService.orders()
-      .filter(o => !!o.payment)
-      .map(o => ({ ...o.payment, orderId: o.id }));
-    this.payments.set(allPayments);
+    this.paymentService.getAllPayments().subscribe({
+      next: (backendPayments: any[]) => {
+        const mapped = (backendPayments || []).map(p => ({
+          id: p.paymentId || p.PaymentId || p.id,
+          orderId: p.orderId || p.OrderId,
+          amount: p.amount || p.Amount,
+          status: p.status || p.Status
+        }));
+        this.payments.set(mapped);
+      },
+      error: err => console.error('Admin payments load error:', err)
+    });
   }
   
   cols = [
@@ -74,9 +84,13 @@ export class AdminPaymentsComponent {
     if(confirm('Issue full refund for ' + id + '?')) {
       const p = this.payments().find(x => x.id === id);
       if (p) {
-        this.orderService.updateOrderPayment(p.orderId, { ...p, status: 'Refunded' });
-        this.loadPayments();
-        this.toast.show({ title: 'Refund Processed', description: 'Refund successful for ' + id });
+        this.paymentService.refund(id, p.amount).subscribe({
+          next: () => {
+            this.loadPayments();
+            this.toast.show({ title: 'Refund Processed', description: 'Refund successful for ' + id });
+          },
+          error: () => this.toast.show({ title: 'Refund Failed', description: 'Check console for details.' })
+        });
       }
     }
   }

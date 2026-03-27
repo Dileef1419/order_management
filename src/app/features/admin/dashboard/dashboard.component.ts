@@ -9,6 +9,7 @@ import { InputComponent } from '../../../shared/components/input/input.component
 import { AuthService } from '../../../core/services/auth.service';
 import { CatalogService } from '../../../core/services/catalog.service';
 import { OrderService } from '../../../core/services/order.service';
+import { PaymentService } from '../../../core/services/payment.service';
 import { ToastService } from '../../../shared/components/toast/toast.service';
 import { AdminPaymentsComponent } from '../payments/admin-payments.component';
 
@@ -47,7 +48,7 @@ import { AdminPaymentsComponent } from '../payments/admin-payments.component';
             <h3 class="text-xs font-bold uppercase tracking-wider text-muted-foreground">Inventory Alerts</h3>
             <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-destructive"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>
           </div>
-          <div class="text-3xl font-black text-destructive">12</div>
+          <div class="text-3xl font-black text-destructive">{{ inventoryAlerts() }}</div>
           <div class="flex items-center gap-1 text-[10px] font-bold text-destructive bg-destructive/5 w-fit px-1.5 py-0.5 rounded uppercase font-black">Urgent</div>
         </div>
 
@@ -56,7 +57,7 @@ import { AdminPaymentsComponent } from '../payments/admin-payments.component';
             <h3 class="text-xs font-bold uppercase tracking-wider text-muted-foreground">Revenue (Est)</h3>
             <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-primary"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
           </div>
-          <div class="text-3xl font-black">₹48.2k</div>
+          <div class="text-3xl font-black">{{ revenue() }}</div>
           <div class="flex items-center gap-1 text-[10px] font-bold text-primary/60 bg-primary/5 w-fit px-1.5 py-0.5 rounded uppercase">Month</div>
         </div>
       </div>
@@ -159,10 +160,16 @@ import { AdminPaymentsComponent } from '../payments/admin-payments.component';
       <h2 class="text-2xl font-bold mt-8 mb-4">Registered Customers</h2>
       <app-card>
         <div class="p-4 space-y-4">
-          @for(user of customers(); track user) {
+          @for(user of customers(); track user.userId) {
             <div class="flex items-center justify-between border-b pb-2 last:border-0 last:pb-0">
-              <div class="font-medium">{{ user }}</div>
-              <app-button variant="outline" size="sm" (onClick)="removeCustomer(user)">Revoke Access</app-button>
+              <div class="flex flex-col">
+                 <div>
+                   <p class="font-bold leading-none">{{ user.name || user.email }}</p>
+                   <p class="text-[10px] text-muted-foreground font-medium mt-1">{{ user.email }}</p>
+                   <p class="text-[10px] text-primary uppercase font-black tracking-widest mt-1">{{ user.role }}</p>
+                 </div>
+              </div>
+              <app-button variant="outline" size="sm" (onClick)="removeCustomer(user.email)">Revoke Access</app-button>
             </div>
           }
           @if(customers().length === 0) {
@@ -176,20 +183,28 @@ import { AdminPaymentsComponent } from '../payments/admin-payments.component';
       <app-card>
         <app-table [data]="orders()" [columns]="orderCols" [searchable]="true">
           <ng-template #cellTemplate let-row let-col="column">
-            @if(col.field === 'id') { <span class="font-medium font-mono text-sm">{{ row.id }}</span> }
-            @if(col.field === 'date') { {{ row.date | date:'short' }} }
+             @if(col.field === 'id') { <span class="font-medium font-mono text-xs">{{ row.id }}</span> }
+             @if(col.field === 'customerName') { <span class="font-bold">{{ row.customerName }}</span> }
+             @if(col.field === 'date') { {{ row.date | date:'short' }} }
             @if(col.field === 'totalAmount') { ₹{{ row.totalAmount | number:'1.2-2' }} }
             @if(col.field === 'status') {
               <app-badge [variant]="row.status === 'Cancelled' ? 'destructive' : 'default'">{{ row.status }}</app-badge>
             }
             @if(col.field === 'actions') {
               <div class="flex gap-2">
+                @if(row.status === 'Placed') {
+                  <app-button variant="secondary" size="sm" (onClick)="updateOrderStatus(row.id, 'Processing')">Process</app-button>
+                  <app-button variant="destructive" size="sm" (onClick)="updateOrderStatus(row.id, 'Cancelled')">Cancel</app-button>
+                }
                 @if(row.status === 'Processing') {
                   <app-button variant="secondary" size="sm" (onClick)="updateOrderStatus(row.id, 'Shipped')">Ship</app-button>
                   <app-button variant="destructive" size="sm" (onClick)="updateOrderStatus(row.id, 'Cancelled')">Cancel</app-button>
                 }
                 @if(row.status === 'Shipped') {
                   <app-button variant="default" size="sm" (onClick)="updateOrderStatus(row.id, 'Delivered')">Deliver</app-button>
+                }
+                @if(row.status === 'Confirmed') {
+                  <app-button variant="secondary" size="sm" (onClick)="updateOrderStatus(row.id, 'Processing')">Confirm & Process</app-button>
                 }
               </div>
             }
@@ -206,9 +221,20 @@ export class DashboardComponent {
   private authService = inject(AuthService);
   private catalogService = inject(CatalogService);
   private orderService = inject(OrderService);
+  private paymentService = inject(PaymentService);
   private toastService = inject(ToastService);
 
-  registeredCount = signal(this.authService.getRegisteredUsers().length);
+  // Stats signals
+  registeredCount = signal(0);
+  revenue = signal('₹0');
+  inventoryAlerts = signal(0);
+  
+  // Data signals
+  orders = signal<any[]>([]);
+  products = signal<any[]>([]);
+  customers = signal<any[]>([]);
+
+  isLoading = signal(false);
 
   newProduct = {
     name: '',
@@ -219,12 +245,68 @@ export class DashboardComponent {
     imageUrl: ''
   };
 
+  constructor() {
+    this.refreshAll();
+  }
+
+  refreshAll() {
+    this.isLoading.set(true);
+    
+    // Load Products
+    this.catalogService.search('').subscribe({
+      next: res => {
+        this.products.set(res.items);
+        this.inventoryAlerts.set(res.items.filter(p => !p.availability).length);
+      },
+      error: err => console.error('Catalog load error:', err)
+    });
+
+    // Load All Orders
+    this.orderService.getAllOrders().subscribe({
+      next: res => this.orders.set(res),
+      error: err => console.error('Orders load error:', err)
+    });
+
+    // Load All Users
+    this.authService.getUsers().subscribe({
+      next: res => {
+        const filtered = res.filter((u: any) => u.role !== 'Admin');
+        this.customers.set(filtered);
+        this.registeredCount.set(filtered.length);
+      },
+      error: err => console.error('Users load error:', err)
+    });
+
+    // Load Revenue (last 30 days)
+    const today = new Date().toISOString().split('T')[0];
+    const lastMonth = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+    
+    this.paymentService.getRevenueReport(lastMonth, today).subscribe({
+      next: (res: any[]) => {
+        const total = res.reduce((sum: number, r: any) => sum + r.totalCaptured, 0);
+        this.revenue.set(`₹${(total / 1000).toFixed(1)}k`);
+        this.isLoading.set(false);
+      },
+      error: err => {
+        console.error('Revenue load error:', err);
+        this.isLoading.set(false);
+      }
+    });
+  }
+
   addProduct() {
     if(!this.newProduct.name || !this.newProduct.price) return;
-    this.catalogService.addProduct({...this.newProduct});
-    this.catalogService.search('').subscribe(res => this.products.set(res.items));
-    this.toastService.show({ title: 'Product Added', description: `${this.newProduct.name} is now live.` });
-    this.newProduct = { name: '', description: '', price: 0, category: '', availability: true, imageUrl: '' };
+    this.catalogService.addProduct({...this.newProduct}).subscribe({
+      next: () => {
+        this.refreshAll();
+        this.toastService.show({ title: 'Product Added', description: `${this.newProduct.name} is now live.` });
+        this.newProduct = { name: '', description: '', price: 0, category: '', availability: true, imageUrl: '' };
+      },
+      error: err => {
+        console.error('Add product error:', err);
+        this.toastService.show({ title: 'Error', description: 'Failed to add product. Check console.' });
+      }
+    });
   }
 
   isDragging = false;
@@ -245,18 +327,15 @@ export class DashboardComponent {
     reader.readAsDataURL(file);
   }
 
-  orders = this.orderService.orders;
-  
   orderCols = [
     { header: 'Order ID', field: 'id' },
+    { header: 'Customer', field: 'customerName' },
     { header: 'Date', field: 'date' },
     { header: 'Total', field: 'totalAmount' },
     { header: 'Status', field: 'status' },
     { header: 'Actions', field: 'actions' }
   ];
 
-  products = signal<any[]>([]);
-  customers = signal<string[]>([]);
   productCols = [
     { header: 'Image', field: 'image' },
     { header: 'ID', field: 'id' },
@@ -268,37 +347,35 @@ export class DashboardComponent {
     { header: 'Actions', field: 'actions' }
   ];
 
-  constructor() {
-    this.catalogService.search('').subscribe(res => this.products.set(res.items));
-    this.customers.set(this.authService.getRegisteredUsers());
-  }
-
   deleteProduct(id: string) {
     if(confirm('Delete product?')) {
-      this.catalogService.deleteProduct(id);
-      this.catalogService.search('').subscribe(res => this.products.set(res.items));
-      this.toastService.show({ title: 'Product Deleted', description: 'Product removed from catalog.' });
+      this.catalogService.deleteProduct(id).subscribe(() => {
+        this.refreshAll();
+        this.toastService.show({ title: 'Product Deleted', description: 'Product removed from catalog.' });
+      });
     }
   }
 
   toggleStock(id: string) {
-    this.catalogService.toggleStock(id);
-    this.catalogService.search('').subscribe(res => this.products.set(res.items));
-    this.toastService.show({ title: 'Stock Updated', description: 'Product availability changed.' });
+    this.catalogService.toggleStock(id).subscribe(() => {
+      this.refreshAll();
+      this.toastService.show({ title: 'Stock Updated', description: 'Product availability changed.' });
+    });
   }
 
   removeCustomer(email: string) {
     if(confirm('Revoke access for ' + email + '?')) {
-      const users = this.authService.getRegisteredUsers().filter(u => u !== email);
-      localStorage.setItem('registered_users', JSON.stringify(users));
-      this.customers.set(users);
-      this.registeredCount.set(users.length);
-      this.toastService.show({ title: 'User Removed', description: email + ' has been revoked.' });
+      this.authService.deleteUser(email).subscribe(() => {
+        this.refreshAll();
+        this.toastService.show({ title: 'User Removed', description: email + ' has been revoked.' });
+      });
     }
   }
 
   updateOrderStatus(id: string, status: string) {
-    this.orderService.updateOrderStatus(id, status);
-    this.toastService.show({ title: 'Order Updated', description: 'Order ' + id + ' marked as ' + status });
+    this.orderService.updateOrderStatus(id, status).subscribe(() => {
+      this.refreshAll();
+      this.toastService.show({ title: 'Order Updated', description: 'Order ' + id + ' marked as ' + status });
+    });
   }
 }
