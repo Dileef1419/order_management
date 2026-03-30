@@ -64,6 +64,37 @@ import { OrderService, Order } from '../../core/services/order.service';
               </div>
             </app-card>
           }
+
+          @if(order()?.shipment) {
+            <app-card title="Shipment Details">
+              <div class="pt-4 space-y-3 text-sm">
+                <div class="flex justify-between">
+                  <span class="text-muted-foreground">Shipment Status</span>
+                  <app-badge [variant]="order()?.shipment?.status === 'Dispatched' ? 'default' : 'outline'">
+                    {{ order()?.shipment?.status }}
+                  </app-badge>
+                </div>
+                @if(order()?.shipment?.carrierRef) {
+                  <div class="flex justify-between">
+                    <span class="text-muted-foreground">Carrier</span>
+                    <span>{{ order()?.shipment?.carrierRef }}</span>
+                  </div>
+                }
+                @if(order()?.shipment?.trackingNumber) {
+                  <div class="flex justify-between">
+                    <span class="text-muted-foreground">Tracking #</span>
+                    <span class="font-mono">{{ order()?.shipment?.trackingNumber }}</span>
+                  </div>
+                }
+                @if(order()?.shipment?.dispatchedAt) {
+                  <div class="flex justify-between">
+                    <span class="text-muted-foreground">Dispatched On</span>
+                    <span>{{ order()?.shipment?.dispatchedAt | date:'medium' }}</span>
+                  </div>
+                }
+              </div>
+            </app-card>
+          }
         </div>
 
         <div class="space-y-6">
@@ -109,12 +140,34 @@ export class OrderDetailComponent implements OnInit {
   ngOnInit() {
     const id = this.route.snapshot.paramMap.get('orderId') || '';
     this.orderId.set(id);
-    this.orderService.getOrder(id).subscribe({
-      next: (o: any) => {
-        // Handle ApiGateway full response format if it has .order wrapper
-        const data = o.order || o;
-        this.order.set(data as Order);
-        this.date = data.date || data.placedAt || new Date().toISOString();
+    this.orderService.getFullOrder(id).subscribe({
+      next: (full: any) => {
+        const o = full.order || full;
+        // Merge payment and shipment into the order signal if they exist
+        const mergedOrder = {
+          ...o,
+          id: o.orderId || o.OrderId || id,
+          items: (o.lines || o.Lines || []).map((l: any) => ({
+            product: {
+              id: l.sku || l.Sku,
+              name: l.sku || l.Sku,
+              price: l.unitPrice || l.UnitPrice,
+              imageUrl: 'https://placehold.co/100x100?text=' + (l.sku || l.Sku)
+            },
+            quantity: l.quantity || l.Quantity
+          })),
+          shipping: o.shippingAddress || o.ShippingAddress || {
+            fullName: o.customerName || o.CustomerName || 'Guest',
+            addressLine1: 'Not provided',
+            city: '',
+            postalCode: '',
+            country: ''
+          },
+          payment: full.payment,
+          shipment: full.shipment
+        };
+        this.order.set(mergedOrder as any);
+        this.date = o.date || o.placedAt || o.PlacedAt || new Date().toISOString();
       },
       error: () => console.error('Failed to load order')
     });

@@ -23,10 +23,12 @@ export interface Order {
   date: string;
   totalAmount: number;
   status: string;
-  contact: any;
-  shipping: any;
-  items: CartItem[];
+  contact?: any;
+  shipping?: any;
+  items?: any[];
   payment?: any;
+  shipment?: any;
+  itemCount?: number;
 }
 
 @Injectable({
@@ -44,17 +46,18 @@ export class OrderService {
     if (!customerId) return of([]);
 
     return this.api.get<any[]>(`/api/v1/orders/by-customer/${customerId}`).pipe(
-      tap((backendOrders: any[]) => {
-        const mappedOrders = (backendOrders || [])
-          .filter(o => o.orderId || o.OrderId || o.Id || o.id) // Only keep orders with an ID
+      map((backendOrders: any[]) => {
+        return (backendOrders || [])
+          .filter(o => o.orderId || o.OrderId || o.Id || o.id)
           .map(o => ({
             id: o.orderId || o.OrderId || o.Id || o.id,
             date: o.placedAt || o.PlacedAt || o.date,
             totalAmount: o.totalAmount || o.TotalAmount,
+            total: o.totalAmount || o.TotalAmount,
             status: o.status || o.Status,
-            itemsCount: o.itemCount || o.ItemCount
-          } as any));
-        this.orders.set(mappedOrders);
+            itemCount: o.itemCount !== undefined ? o.itemCount : o.ItemCount,
+            items: o.itemCount !== undefined ? o.itemCount : o.ItemCount
+          } as Order));
       })
     );
   }
@@ -64,6 +67,13 @@ export class OrderService {
     const placeOrderRequest = {
       customerId: this.auth.currentUserValue?.id || '00000000-0000-0000-0000-000000000000',
       customerName: payload.shipping.fullName || this.auth.currentUserValue?.email || 'Guest',
+      shippingAddress: {
+        fullName: payload.shipping.fullName,
+        addressLine1: payload.shipping.addressLine1,
+        city: payload.shipping.city,
+        postalCode: payload.shipping.postalCode,
+        country: payload.shipping.country
+      },
       lines: payload.items.map(i => ({
         sku: i.product.id,
         quantity: i.quantity,
@@ -86,17 +96,24 @@ export class OrderService {
     return this.api.get<any>(`/api/v1/orders/${id}`);
   }
 
+  getFullOrder(id: string): Observable<any> {
+    return this.api.get<any>(`/api/v1/orders/${id}`);
+  }
+
   updateOrderPayment(id: string, payment: any): Observable<any> {
     // In a real app, this might be a PATCH to /api/v1/orders/{id}/payment
     return this.api.put<any>(`/api/v1/orders/${id}/payment`, { payment });
   }
 
   updateOrderStatus(id: string, status: string): Observable<any> {
+    if (status === 'Confirmed') {
+      return this.confirmOrder(id);
+    }
     if (status === 'Cancelled') {
       return this.api.put<any>(`/api/v1/orders/${id}/cancel`, { reason: 'Admin override' });
     }
-    // For other statuses (Shipped, Delivered), we'll assume a PATCH exists or add it
-    return this.api.patch<any>(`/api/v1/orders/${id}/status`, { status });
+    // For other statuses (Shipped, Delivered, Returned), use the unified status update
+    return this.api.put<any>(`/api/v1/orders/${id}/status`, { status });
   }
 
   getAllOrders(): Observable<any[]> {

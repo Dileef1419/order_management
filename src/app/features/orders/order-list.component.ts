@@ -49,7 +49,6 @@ import { TableComponent } from '../../shared/components/table/table.component';
               
               <div class="flex gap-2">
                 <app-button variant="outline" size="sm" [routerLink]="['/orders', order.id]">Details</app-button>
-                <app-button variant="secondary" size="sm" [routerLink]="['/orders', order.id, 'track']" (onClick)="$event.stopPropagation()">Track</app-button>
               </div>
             </div>
           </div>
@@ -68,9 +67,9 @@ import { TableComponent } from '../../shared/components/table/table.component';
 })
 export class OrderListComponent implements OnInit {
   private orderService = inject(OrderService);
-  
+
   orders = signal<any[]>([]);
-  
+
   columns = [
     { header: 'Order ID', field: 'id' },
     { header: 'Date', field: 'date' },
@@ -82,24 +81,18 @@ export class OrderListComponent implements OnInit {
 
   ngOnInit() {
     this.orderService.refreshOrders().subscribe(mappedOrders => {
-      this.orders.set(mappedOrders.map(o => ({
-        id: o.id,
-        date: o.date,
-        status: o.status,
-        items: (o as any).itemsCount || 0,
-        total: o.totalAmount
-      })));
+      this.orders.set(mappedOrders);
     });
   }
 
   getStatusVariant(status: string) {
     switch (status) {
-      case 'Delivered': 
+      case 'Delivered':
       case 'Confirmed': return 'default';
-      case 'Processing': 
+      case 'Processing':
       case 'Placed': return 'secondary';
       case 'Shipped': return 'outline';
-      case 'Cancelled': 
+      case 'Cancelled':
       case 'Failed': return 'destructive';
       default: return 'outline';
     }

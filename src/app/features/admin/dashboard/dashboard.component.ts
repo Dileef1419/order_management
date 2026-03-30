@@ -193,18 +193,18 @@ import { AdminPaymentsComponent } from '../payments/admin-payments.component';
             @if(col.field === 'actions') {
               <div class="flex gap-2">
                 @if(row.status === 'Placed') {
-                  <app-button variant="secondary" size="sm" (onClick)="updateOrderStatus(row.id, 'Processing')">Process</app-button>
+                  <app-button variant="outline" size="sm" (onClick)="updateOrderStatus(row.id, 'Confirmed')">Confirm</app-button>
                   <app-button variant="destructive" size="sm" (onClick)="updateOrderStatus(row.id, 'Cancelled')">Cancel</app-button>
                 }
-                @if(row.status === 'Processing') {
-                  <app-button variant="secondary" size="sm" (onClick)="updateOrderStatus(row.id, 'Shipped')">Ship</app-button>
+                @if(row.status === 'Confirmed') {
+                  <app-button variant="outline" size="sm" (onClick)="updateOrderStatus(row.id, 'Shipped')">Ship</app-button>
                   <app-button variant="destructive" size="sm" (onClick)="updateOrderStatus(row.id, 'Cancelled')">Cancel</app-button>
                 }
                 @if(row.status === 'Shipped') {
-                  <app-button variant="default" size="sm" (onClick)="updateOrderStatus(row.id, 'Delivered')">Deliver</app-button>
+                  <app-button variant="outline" size="sm" (onClick)="updateOrderStatus(row.id, 'Delivered')">Deliver</app-button>
                 }
-                @if(row.status === 'Confirmed') {
-                  <app-button variant="secondary" size="sm" (onClick)="updateOrderStatus(row.id, 'Processing')">Confirm & Process</app-button>
+                @if(row.status === 'Delivered') {
+                  <app-button variant="secondary" size="sm" (onClick)="updateOrderStatus(row.id, 'Returned')">Return</app-button>
                 }
               </div>
             }
